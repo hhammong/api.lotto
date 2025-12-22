@@ -76,12 +76,14 @@ public class LottoHistory {
     @Column(name = "`UPDATED_AT`", nullable = false)
     private LocalDateTime updatedAt;
 
-    @Column(name = "`DELETE_YN`", length = 1)
-    @ColumnDefault("'N'")
+    @Column(name = "DELETE_YN", length = 1)
+    @ColumnDefault("N")
+    @Builder.Default
     private String deleteYn = "N";
 
-    @Column(name = "`USE_YN`", length = 1)
-    @ColumnDefault("'Y'")
+    @Column(name = "USE_YN", length = 1)
+    @ColumnDefault("Y")
+    @Builder.Default
     private String useYn = "Y";
 
     @PrePersist

@@ -38,8 +38,8 @@ public class AuthService {
         user.setNickname(nickname);
         user.setCreatedAt(LocalDateTime.now());
         user.setUpdatedAt(LocalDateTime.now());
-        user.setDeleteYn('N');
-        user.setUseYn('Y');
+        user.setDeleteYn("N");
+        user.setUseYn("Y");
         user.setNotificationEnabled(true);
 
         return userRepository.save(user);

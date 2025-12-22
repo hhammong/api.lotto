@@ -2,9 +2,8 @@ package hhammong.apilotto.entity;
 
 import jakarta.persistence.*;
 import jakarta.persistence.Table;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
+import org.hibernate.annotations.ColumnDefault;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -14,6 +13,8 @@ import java.util.UUID;
 @Getter
 @Setter
 @NoArgsConstructor
+@Builder
+@AllArgsConstructor
 public class User {
 
     @Id
@@ -46,15 +47,22 @@ public class User {
     private LocalDateTime updatedAt;
 
     @Column(name = "DELETE_YN", length = 1)
-    private Character deleteYn = 'N';
+    @ColumnDefault("N")
+    @Builder.Default
+    private String deleteYn = "N";
 
     @Column(name = "USE_YN", length = 1)
-    private Character useYn = 'Y';
+    @ColumnDefault("Y")
+    @Builder.Default
+    private String useYn = "Y";
 
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
+
+        if (this.deleteYn == null) this.deleteYn = "N";
+        if (this.useYn == null) this.useYn = "Y";
     }
 
     @PreUpdate
