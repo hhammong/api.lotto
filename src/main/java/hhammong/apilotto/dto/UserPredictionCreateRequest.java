@@ -1,5 +1,6 @@
 package hhammong.apilotto.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import java.util.List;
 
@@ -8,12 +9,17 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@Schema(description = "로또 예측 번호 등록 요청")
 public class UserPredictionCreateRequest {
 
     // 사용자가 보내는 건 이것만!
+    @Schema(description = "예측 번호 6개", example = "[1, 7, 13, 23, 32, 45]")
     private List<Integer> numbers;  // [3, 1, 6, 4, 5, 2]
 
+    @Schema(description = "메모", example = "꿈에서 봄")
     private String memo;  // 선택사항
+
+    @Schema(description = "회차 번호")
     private Integer targetDrawNo;  // 선택사항
 
     // 중복 번호 검증

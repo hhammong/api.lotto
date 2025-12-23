@@ -4,6 +4,9 @@ import hhammong.apilotto.dto.ApiResponse;
 import hhammong.apilotto.dto.UserPredictionCreateRequest;
 import hhammong.apilotto.dto.UserPredictionResponse;
 import hhammong.apilotto.service.UserPredictionService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -16,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
+@Tag(name = "사용자 번호 예측", description = "사용자가 등록한 예측 번호 관련 API")
 @RestController
 @RequestMapping("/api/users/{userId}/predictions")
 @RequiredArgsConstructor
@@ -28,8 +32,11 @@ public class UserPredictionController {
      * POST /api/users/{userId}/predictions
      */
     @PostMapping
+    @Operation(summary = "예측 번호 등록", description = "사용자가 예측하는 번호 6개를 입력한다.")
     public ResponseEntity<ApiResponse<UserPredictionResponse>> createPrediction(
+            @Parameter(description = "userId", required = true)
             @PathVariable UUID userId,
+
             @Valid @RequestBody UserPredictionCreateRequest request) {
 
         UserPredictionResponse response = predictionService.createPrediction(userId, request);
@@ -44,6 +51,7 @@ public class UserPredictionController {
      * GET /api/users/{userId}/predictions
      */
     @GetMapping
+    @Operation(summary = "예측 번호 조회", description = "사용자가 등록한 번호 목록 조회.")
     public ResponseEntity<ApiResponse<List<UserPredictionResponse>>> getMyPredictions(
             @PathVariable UUID userId) {
 
