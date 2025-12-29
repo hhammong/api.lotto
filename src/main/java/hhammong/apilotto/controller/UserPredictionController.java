@@ -1,8 +1,7 @@
 package hhammong.apilotto.controller;
 
-import hhammong.apilotto.dto.ApiResponse;
-import hhammong.apilotto.dto.UserPredictionCreateRequest;
-import hhammong.apilotto.dto.UserPredictionResponse;
+import hhammong.apilotto.dto.*;
+import hhammong.apilotto.service.UserPredictionCheckService;
 import hhammong.apilotto.service.UserPredictionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -26,6 +25,7 @@ import java.util.UUID;
 public class UserPredictionController {
 
     private final UserPredictionService predictionService;
+    private final UserPredictionCheckService checkService;
 
     /**
      * 번호 등록
@@ -106,4 +106,35 @@ public class UserPredictionController {
         return ResponseEntity.ok(
                 ApiResponse.success(count, "번호 개수 조회 성공"));
     }
+
+    /**
+     * 내 모든 번호 최신 회차 당첨 확인
+     * GET /api/users/{userId}/predictions/check-latest
+     */
+    @GetMapping("/check-latest")
+    @Operation(summary = "내 모든 번호 최신 회차 당첨 확인", description = "내 모든 번호 최신 회차 당첨 확인.")
+    public ResponseEntity<ApiResponse<AllNumbersCheckResponse>> checkLatestDraw(
+            @PathVariable UUID userId) {
+
+        AllNumbersCheckResponse response = checkService.checkAllMyNumbers(userId);
+
+        return ResponseEntity.ok(
+                ApiResponse.success(response, "최신 회차 당첨 확인 완료"));
+    }
+
+    /**
+     * 특정 번호의 전체 당첨 이력 조회
+     * GET /api/users/{userId}/predictions/{predictionId}/history
+     */
+    @GetMapping("/{predictionId}/history")
+    public ResponseEntity<ApiResponse<PredictionHistoryResponse>> getPredictionHistory(
+            @PathVariable UUID userId,
+            @PathVariable UUID predictionId) {
+
+        PredictionHistoryResponse response = checkService.getPredictionHistory(userId, predictionId);
+
+        return ResponseEntity.ok(
+                ApiResponse.success(response, "번호 이력 조회 완료"));
+    }
+
 }

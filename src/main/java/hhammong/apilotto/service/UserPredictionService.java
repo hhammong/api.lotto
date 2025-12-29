@@ -85,7 +85,6 @@ public class UserPredictionService {
     public List<UserPredictionResponse> getMyPredictions(UUID userId) {
         List<UserPrediction> predictions = predictionRepository
                 .findByUser_UserIdAndDeleteYnOrderByCreatedAtDesc(userId, "N");
-
         return predictions.stream()
                 .map(UserPredictionResponse::from)
                 .collect(Collectors.toList());

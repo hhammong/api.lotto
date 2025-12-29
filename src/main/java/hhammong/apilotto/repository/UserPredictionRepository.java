@@ -15,7 +15,7 @@ import java.util.UUID;
 @Repository
 public interface UserPredictionRepository extends JpaRepository<UserPrediction, UUID> {
 
-    // 특정 사용자의 번호 목록 조회 (삭제되지 않은 것만)
+    // 특정 사용자의 번호 목록 조회 (삭제되지 않은 것만) userid로.
     List<UserPrediction> findByUser_UserIdAndDeleteYnOrderByCreatedAtDesc(
             UUID userId, String deleteYn);
 
