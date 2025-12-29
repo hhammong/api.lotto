@@ -131,7 +131,8 @@ public class UserPredictionController {
             @PathVariable UUID userId,
             @PathVariable UUID predictionId) {
 
-        PredictionHistoryResponse response = checkService.getPredictionHistory(userId, predictionId);
+        //PredictionHistoryResponse response = checkService.getPredictionHistory(userId, predictionId);
+        PredictionHistoryResponse response = checkService.getPredictionHistory2(userId, predictionId);
 
         return ResponseEntity.ok(
                 ApiResponse.success(response, "번호 이력 조회 완료"));

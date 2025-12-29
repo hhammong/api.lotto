@@ -5,9 +5,11 @@ import hhammong.apilotto.dto.DrawMatchResult;
 import hhammong.apilotto.dto.MyNumberCheckResult;
 import hhammong.apilotto.dto.PredictionHistoryResponse;
 import hhammong.apilotto.entity.LottoHistory;
+import hhammong.apilotto.entity.PredictionsHistory;
 import hhammong.apilotto.entity.UserPrediction;
 import hhammong.apilotto.exception.ResourceNotFoundException;
 import hhammong.apilotto.repository.LottoHistoryRepository;
+import hhammong.apilotto.repository.PredictionsHistoryRepository;
 import hhammong.apilotto.repository.UserPredictionRepository;
 import hhammong.apilotto.util.LottoMatchUtils;
 import hhammong.apilotto.util.LottoMatchUtils.MatchResult;
@@ -27,6 +29,7 @@ public class UserPredictionCheckService {
 
     private final UserPredictionRepository predictionRepository;
     private final LottoHistoryRepository lottoHistoryRepository;
+    private final PredictionsHistoryRepository predictionsHistoryRepository;
 
     /**
      * 내가 등록한 모든 번호를 최신 회차와 비교
@@ -190,6 +193,84 @@ public class UserPredictionCheckService {
     }
 
     /**
+     * PredictionHistory 테이블 특정 번호의 전체 이력 조회
+     */
+    public PredictionHistoryResponse getPredictionHistory2(UUID userId, UUID predictionId) {
+        // 1. 내 번호 조회
+        UserPrediction prediction = predictionRepository
+                .findByPredictionIdAndUser_UserIdAndDeleteYn(predictionId, userId, "N")
+                .orElseThrow(() -> new ResourceNotFoundException("해당 번호를 찾을 수 없습니다"));
+
+        // 2. 내 번호 리스트
+        List<Integer> myNumbers = Arrays.asList(
+                prediction.getPredictedNum1().intValue(),
+                prediction.getPredictedNum2().intValue(),
+                prediction.getPredictedNum3().intValue(),
+                prediction.getPredictedNum4().intValue(),
+                prediction.getPredictedNum5().intValue(),
+                prediction.getPredictedNum6().intValue()
+        );
+
+        // 3. 시작 회차 결정
+        Integer startDrawNo = determineStartDrawNo(prediction);
+
+        // ✨ 4. PREDICTIONS_HISTORY에서 당첨 이력만 조회!
+        List<PredictionsHistory> winningHistories = predictionsHistoryRepository
+                .findByPredictionIdOrderByHistoryIdAsc(predictionId);
+
+        // 5. DrawMatchResult로 변환 (LOTTO_HISTORY 조인 필요)
+        List<DrawMatchResult> history = winningHistories.stream()
+                .map(this::convertToDrawMatchResult)
+                .collect(Collectors.toList());
+
+        // 6. 통계 계산 및 응답 생성
+        return buildHistoryResponse(prediction, myNumbers, startDrawNo, history);
+    }
+
+    /**
+     * PredictionsHistory → DrawMatchResult 변환
+     */
+    private DrawMatchResult convertToDrawMatchResult(PredictionsHistory ph) {
+        // LOTTO_HISTORY에서 회차 정보 조회 (캐싱 권장)
+        LottoHistory draw = lottoHistoryRepository.findById(ph.getHistoryId())
+                .orElseThrow(() -> new ResourceNotFoundException("회차 정보를 찾을 수 없습니다"));
+
+        List<Integer> winningNumbers = Arrays.asList(
+                draw.getNumber1().intValue(),
+                draw.getNumber2().intValue(),
+                draw.getNumber3().intValue(),
+                draw.getNumber4().intValue(),
+                draw.getNumber5().intValue(),
+                draw.getNumber6().intValue()
+        );
+
+        return DrawMatchResult.builder()
+                .drawNo(draw.getDrawNo())
+                .drawDate(draw.getDrawDate())
+                .winningNumbers(winningNumbers)
+                .bonusNumber(draw.getBonusNumber().intValue())
+                .matchCount(ph.getMatchedCount().intValue())
+                .hasBonus(ph.getHasBonus())
+                .rank(ph.getRank())
+                .rankDescription(getRankDescription(ph.getRank()))
+                .prizeAmount(ph.getPrizeAmount().longValue())
+                .matchedNumbers(List.of())  // 필요시 계산
+                .build();
+    }
+
+    private String getRankDescription(Integer rank) {
+        if (rank == null) return "꽝";
+        return switch (rank) {
+            case 1 -> "1등";
+            case 2 -> "2등";
+            case 3 -> "3등";
+            case 4 -> "4등";
+            case 5 -> "5등";
+            default -> "꽝";
+        };
+    }
+
+    /**
      * 특정 번호의 전체 이력 조회
      */
     public PredictionHistoryResponse getPredictionHistory(UUID userId, UUID predictionId) {
@@ -238,6 +319,21 @@ public class UserPredictionCheckService {
 
         // 등록일 기준 다음 회차 찾기 (간단하게 1회부터)
         return 1;
+    }
+
+    /**
+     * 시작 회차부터 현재까지 총 회차 수 계산
+     */
+    private int getTotalDrawsSinceStart(Integer startDrawNo) {
+        LottoHistory latestDraw = lottoHistoryRepository
+                .findTopByDeleteYnAndUseYnOrderByDrawNoDesc("N", "Y")
+                .orElse(null);
+
+        if (latestDraw == null) {
+            return 0;
+        }
+
+        return latestDraw.getDrawNo() - startDrawNo + 1;
     }
 
     /**
@@ -291,10 +387,13 @@ public class UserPredictionCheckService {
             List<DrawMatchResult> history) {
 
         // 기본 통계
-        int totalDraws = history.size();
+        /*int totalDraws = history.size();
         int winningDraws = (int) history.stream()
                 .filter(h -> h.getRank() != null)
-                .count();
+                .count();*/
+
+        int totalDraws = getTotalDrawsSinceStart(startDrawNo);  // 전체 참여 회차
+        int winningDraws = history.size();  // 당첨 회차 = history 개수
 
         // 등수별 카운트
         int rank1 = (int) history.stream().filter(h -> Integer.valueOf(1).equals(h.getRank())).count();
