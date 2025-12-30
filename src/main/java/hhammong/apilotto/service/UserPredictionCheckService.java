@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -216,11 +217,12 @@ public class UserPredictionCheckService {
 
         // ✨ 4. PREDICTIONS_HISTORY에서 당첨 이력만 조회!
         List<PredictionsHistory> winningHistories = predictionsHistoryRepository
-                .findByPredictionIdOrderByHistoryIdAsc(predictionId);
+                .findByPredictionIdOrderByDrawNoAsc(predictionId);
 
         // 5. DrawMatchResult로 변환 (LOTTO_HISTORY 조인 필요)
         List<DrawMatchResult> history = winningHistories.stream()
                 .map(this::convertToDrawMatchResult)
+                .sorted(Comparator.comparing(DrawMatchResult::getDrawNo).reversed())
                 .collect(Collectors.toList());
 
         // 6. 통계 계산 및 응답 생성

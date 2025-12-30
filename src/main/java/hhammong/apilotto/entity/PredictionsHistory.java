@@ -30,6 +30,9 @@ public class PredictionsHistory {
     @Column(name = "`USER_ID`", nullable = false)
     private UUID userId;  // 사용자
 
+    @Column(name = "`DRAW_NO`", nullable = false, unique = true)
+    private Integer drawNo;  // 당첨회차
+
     @Column(name = "`RANK`", nullable = false)
     private Integer rank;  // 당첨등수 (null이면 꽝)
 

@@ -11,7 +11,7 @@ import java.util.UUID;
 public interface PredictionsHistoryRepository extends JpaRepository<PredictionsHistory, UUID> {
 
     // 특정 예측 번호의 전체 이력 조회
-    List<PredictionsHistory> findByPredictionIdOrderByHistoryIdAsc(UUID predictionId);
+    List<PredictionsHistory> findByPredictionIdOrderByDrawNoAsc(UUID predictionId);
 
     // 특정 사용자의 특정 예측 이력 조회
     List<PredictionsHistory> findByUserIdAndPredictionId(UUID userId, UUID predictionId);
