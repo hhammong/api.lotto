@@ -49,6 +49,9 @@ public class PredictionsHistory {
     @Builder.Default
     private Integer prizeAmount = 0;  // 해당 회차 당첨금
 
+    @Column(name = "`START_DRAW_SORTATION`")
+    private String startDrawSortation;  // 과거이력인지 현재부터인지 구분
+
     @CreationTimestamp
     @Column(name = "`CREATED_AT`", nullable = false, updatable = false)
     private LocalDateTime createdAt;  // 생성일

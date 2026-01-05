@@ -1,18 +1,13 @@
 package hhammong.apilotto.service;
 
 import hhammong.apilotto.dto.DrawMatchResult;
+import hhammong.apilotto.dto.PredictionHistoryResponse;
 import hhammong.apilotto.dto.UserPredictionCreateRequest;
 import hhammong.apilotto.dto.UserPredictionResponse;
-import hhammong.apilotto.entity.LottoHistory;
-import hhammong.apilotto.entity.PredictionsHistory;
-import hhammong.apilotto.entity.User;
-import hhammong.apilotto.entity.UserPrediction;
+import hhammong.apilotto.entity.*;
 import hhammong.apilotto.exception.DuplicateNumberException;
 import hhammong.apilotto.exception.ResourceNotFoundException;
-import hhammong.apilotto.repository.LottoHistoryRepository;
-import hhammong.apilotto.repository.PredictionsHistoryRepository;
-import hhammong.apilotto.repository.UserPredictionRepository;
-import hhammong.apilotto.repository.UserRepository;
+import hhammong.apilotto.repository.*;
 import hhammong.apilotto.util.LottoMatchUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -20,6 +15,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -35,7 +32,8 @@ public class UserPredictionService {
 
     private final PredictionsHistoryRepository predictionsHistoryRepository;
     private final LottoHistoryRepository lottoHistoryRepository;
-    private final UserPredictionCheckService checkService;
+    private final UserPredictionHistoricalStatsRepository userPredictionHistoricalStatsRepository;
+    private final UserPredictionTrackingStatsRepository userPredictionTrackingStatsRepository;
 
     /**
      * 번호 등록
@@ -69,6 +67,8 @@ public class UserPredictionService {
             throw new DuplicateNumberException("이미 등록된 번호 조합입니다");
         }
 
+        Integer startDrawId = calculateStartDrawId();
+
         // 5. Entity 생성
         UserPrediction prediction = UserPrediction.builder()
                 .user(user)
@@ -80,6 +80,7 @@ public class UserPredictionService {
                 .predictedNum6(sortedNumbers.get(5).shortValue())
                 .memo(request.getMemo())
                 .targetDrawNo(request.getTargetDrawNo())
+                .startDrawId(startDrawId)
                 // startDrawId는 나중에 로직 추가 (현재 최신 회차 + 1)
                 .build();
 
@@ -87,11 +88,155 @@ public class UserPredictionService {
         UserPrediction saved = predictionRepository.save(prediction);
 
         savePredictionsHistory(saved, userId);
+        saveUserPredictionHistoricalStats(userId, prediction);
+        saveUserPredictionTrackingStats(userId, prediction);
 
         // 7. DTO 변환 후 반환
         return UserPredictionResponse.from(saved);
     }
 
+    /**
+     * 현재 시간 기준으로 시작 회차 계산
+     * - 토요일 20:00 이전: 이번 주 회차
+     * - 토요일 20:00 이후: 다음 주 회차
+     */
+    private Integer calculateStartDrawId() {
+        LocalDateTime now = LocalDateTime.now();
+
+        // 최신 회차 정보 조회
+        LottoHistory latestHistory = lottoHistoryRepository
+                .findTopByDeleteYnAndUseYnOrderByDrawNoDesc("N", "Y")
+                .orElseThrow(() -> new IllegalStateException("최신 회차 정보를 찾을 수 없습니다"));
+
+        Integer latestDrawNo = latestHistory.getDrawNo();
+        LocalDate latestDrawDate = latestHistory.getDrawDate();
+
+        // 다음 추첨일 계산 (최신 추첨일 + 7일씩 더해가며 현재보다 미래인 토요일 찾기)
+        LocalDateTime nextDrawDateTime = latestDrawDate.atTime(20, 0);
+        Integer nextDrawNo = latestDrawNo;
+
+        while (nextDrawDateTime.isBefore(now) || nextDrawDateTime.isEqual(now)) {
+            nextDrawDateTime = nextDrawDateTime.plusWeeks(1);
+            nextDrawNo++;
+        }
+
+        return nextDrawNo;
+    }
+
+    /**
+     * 이번 주 토요일 20:00 시간 계산
+     */
+    private LocalDateTime getThisWeekSaturdayDrawTime(LocalDateTime now) {
+        LocalDate today = now.toLocalDate();
+
+        // 이번 주 토요일 찾기
+        LocalDate thisSaturday = today.with(java.time.temporal.TemporalAdjusters.nextOrSame(
+                java.time.DayOfWeek.SATURDAY
+        ));
+
+        return thisSaturday.atTime(20, 0, 0);
+    }
+
+    private void saveUserPredictionHistoricalStats(UUID userId, UserPrediction prediction) {
+        // 1. 내 번호 조회
+        /*UserPrediction prediction = predictionRepository
+                .findByPredictionIdAndUser_UserIdAndDeleteYn(predictionId, userId, "N")
+                .orElseThrow(() -> new ResourceNotFoundException("해당 번호를 찾을 수 없습니다"));*/
+
+        // 2. 내 번호 리스트
+        List<Integer> myNumbers = Arrays.asList(
+                prediction.getPredictedNum1().intValue(),
+                prediction.getPredictedNum2().intValue(),
+                prediction.getPredictedNum3().intValue(),
+                prediction.getPredictedNum4().intValue(),
+                prediction.getPredictedNum5().intValue(),
+                prediction.getPredictedNum6().intValue()
+        );
+
+        // 3. 시작 회차 결정
+        //Integer startDrawNo = determineStartDrawNo(prediction);
+
+        // 4. 시작 회차 이후 모든 회차 조회
+        List<LottoHistory> allDraws = lottoHistoryRepository
+                .findByDrawNoGreaterThanEqualAndDeleteYnAndUseYnOrderByDrawNoAsc(
+                        1, "N", "Y");
+
+        // 5. 각 회차마다 매칭 계산
+        List<DrawMatchResult> history = allDraws.stream()
+                .map(draw -> calculateDrawMatchForHistory(myNumbers, draw))
+                .collect(Collectors.toList());
+
+        // 6. 통계 계산 및 응답 생성
+        PredictionHistoryResponse response = buildHistoryResponse(prediction, myNumbers, 1, history);
+
+        UserPredictionHistoricalStats entity = UserPredictionHistoricalStats.builder()
+                .userPrediction(prediction)  // UserPrediction 객체
+                .totalDraws(response.getTotalDraws())
+                .winningDraws(response.getWinningDraws())
+                .totalPrizeAmount(response.getTotalPrizeAmount())
+                .bestRank(response.getBestRank())
+                .bestDrawNo(response.getBestDrawNo())
+                .returnRate(response.getReturnRate())
+                .rank1Count(response.getRank1Count())
+                .rank2Count(response.getRank2Count())
+                .rank3Count(response.getRank3Count())
+                .rank4Count(response.getRank4Count())
+                .rank5Count(response.getRank5Count())
+                .build();
+
+        userPredictionHistoricalStatsRepository.save(entity);
+
+    }
+    private void saveUserPredictionTrackingStats(UUID userId, UserPrediction prediction) {
+        // 1. 내 번호 조회
+        /*UserPrediction prediction = predictionRepository
+                .findByPredictionIdAndUser_UserIdAndDeleteYn(predictionId, userId, "N")
+                .orElseThrow(() -> new ResourceNotFoundException("해당 번호를 찾을 수 없습니다"));*/
+
+        // 2. 내 번호 리스트
+        List<Integer> myNumbers = Arrays.asList(
+                prediction.getPredictedNum1().intValue(),
+                prediction.getPredictedNum2().intValue(),
+                prediction.getPredictedNum3().intValue(),
+                prediction.getPredictedNum4().intValue(),
+                prediction.getPredictedNum5().intValue(),
+                prediction.getPredictedNum6().intValue()
+        );
+
+        // 3. 시작 회차 결정
+        Integer startDrawNo = determineStartDrawNo(prediction);
+
+        // 4. 시작 회차 이후 모든 회차 조회
+        List<LottoHistory> allDraws = lottoHistoryRepository
+                .findByDrawNoGreaterThanEqualAndDeleteYnAndUseYnOrderByDrawNoAsc(
+                        startDrawNo, "N", "Y");
+
+        // 5. 각 회차마다 매칭 계산
+        List<DrawMatchResult> history = allDraws.stream()
+                .map(draw -> calculateDrawMatchForHistory(myNumbers, draw))
+                .collect(Collectors.toList());
+
+        // 6. 통계 계산 및 응답 생성
+        PredictionHistoryResponse response = buildHistoryResponse(prediction, myNumbers, startDrawNo, history);
+
+        UserPredictionTrackingStats entity = UserPredictionTrackingStats.builder()
+                .userPrediction(prediction)  // UserPrediction 객체
+                .totalDraws(response.getTotalDraws())
+                .winningDraws(response.getWinningDraws())
+                .totalPrizeAmount(response.getTotalPrizeAmount())
+                .bestRank(response.getBestRank())
+                .bestDrawNo(response.getBestDrawNo())
+                .returnRate(response.getReturnRate())
+                .rank1Count(response.getRank1Count())
+                .rank2Count(response.getRank2Count())
+                .rank3Count(response.getRank3Count())
+                .rank4Count(response.getRank4Count())
+                .rank5Count(response.getRank5Count())
+                .build();
+
+        userPredictionTrackingStatsRepository.save(entity);
+
+    }
     /**
      * PREDICTIONS_HISTORY 저장
      */
@@ -107,12 +252,12 @@ public class UserPredictionService {
         );
 
         // 2. 시작 회차 결정 (CheckService의 로직 사용)
-        Integer startDrawNo = determineStartDrawNo(prediction);
+        //Integer startDrawNo = determineStartDrawNo(prediction);
 
         // 3. 과거 회차 조회
         List<LottoHistory> pastDraws = lottoHistoryRepository
                 .findByDrawNoGreaterThanEqualAndDeleteYnAndUseYnOrderByDrawNoAsc(
-                        startDrawNo, "N", "Y");
+                        1, "N", "Y");
 
         // 4. 각 회차별로 매칭 계산 & PredictionsHistory 생성
         List<PredictionsHistory> histories = pastDraws.stream()
@@ -133,6 +278,7 @@ public class UserPredictionService {
                             .hasBonus(result.getHasBonus())
                             .matchedCount(result.getMatchCount().shortValue())
                             .prizeAmount(result.getPrizeAmount().intValue())
+                            .startDrawSortation("past")
                             .build();
                 })
                 .filter(history -> history != null)
@@ -186,6 +332,129 @@ public class UserPredictionService {
     }
 
     /**
+     * 이력 응답 생성 (통계 포함)
+     */
+    private PredictionHistoryResponse buildHistoryResponse(
+            UserPrediction prediction,
+            List<Integer> myNumbers,
+            Integer startDrawNo,
+            List<DrawMatchResult> history) {
+
+        // 기본 통계
+        int totalDraws = history.size();
+        int winningDraws = (int) history.stream()
+                .filter(h -> h.getRank() != null)
+                .count();
+
+        /*int totalDraws = getTotalDrawsSinceStart(startDrawNo);  // 전체 참여 회차
+        int winningDraws = history.size();  // 당첨 회차 = history 개수*/
+
+        // 등수별 카운트
+        int rank1 = (int) history.stream().filter(h -> Integer.valueOf(1).equals(h.getRank())).count();
+        int rank2 = (int) history.stream().filter(h -> Integer.valueOf(2).equals(h.getRank())).count();
+        int rank3 = (int) history.stream().filter(h -> Integer.valueOf(3).equals(h.getRank())).count();
+        int rank4 = (int) history.stream().filter(h -> Integer.valueOf(4).equals(h.getRank())).count();
+        int rank5 = (int) history.stream().filter(h -> Integer.valueOf(5).equals(h.getRank())).count();
+
+        // 금액 통계
+        long totalPrize = history.stream()
+                .mapToLong(DrawMatchResult::getPrizeAmount)
+                .sum();
+        long totalInvestment = totalDraws * 1000L;  // 회차당 1,000원
+        long netProfit = totalPrize - totalInvestment;
+        double returnRate = totalInvestment > 0
+                ? ((double) totalPrize / totalInvestment * 100)
+                : 0.0;
+
+        // 최고 등수 찾기
+        Integer bestRank = history.stream()
+                .map(DrawMatchResult::getRank)
+                .filter(rank -> rank != null)
+                .min(Integer::compareTo)
+                .orElse(null);
+
+        Integer bestDrawNo = null;
+        if (bestRank != null) {
+            bestDrawNo = history.stream()
+                    .filter(h -> bestRank.equals(h.getRank()))
+                    .map(DrawMatchResult::getDrawNo)
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        // 요약 메시지
+        String message = generateHistorySummaryMessage(
+                totalDraws, winningDraws, totalPrize, netProfit, returnRate,
+                rank1, rank2, rank3, rank4, rank5, bestRank);
+
+        return PredictionHistoryResponse.builder()
+                .predictionId(prediction.getPredictionId())
+                .myNumbers(myNumbers)
+                .memo(prediction.getMemo())
+                .createdAt(prediction.getCreatedAt())
+                .startDrawNo(startDrawNo)
+                .history(history)
+                .totalDraws(totalDraws)
+                .winningDraws(winningDraws)
+                .rank1Count(rank1)
+                .rank2Count(rank2)
+                .rank3Count(rank3)
+                .rank4Count(rank4)
+                .rank5Count(rank5)
+                .totalPrizeAmount(totalPrize)
+                .totalInvestment(totalInvestment)
+                .netProfit(netProfit)
+                .returnRate(Math.round(returnRate * 100.0) / 100.0)  // 소수점 2자리
+                .bestRank(bestRank)
+                .bestDrawNo(bestDrawNo)
+                .summaryMessage(message)
+                .build();
+    }
+
+    /**
+     * 이력 요약 메시지 생성
+     */
+    private String generateHistorySummaryMessage(
+            int total, int winning, long prize, long profit, double returnRate,
+            int r1, int r2, int r3, int r4, int r5, Integer bestRank) {
+
+        if (total == 0) {
+            return "참여 이력이 없습니다.";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("총 %d회 참여, %d회 당첨. ", total, winning));
+
+        if (winning > 0) {
+            if (r1 > 0) sb.append(String.format("1등 %d회, ", r1));
+            if (r2 > 0) sb.append(String.format("2등 %d회, ", r2));
+            if (r3 > 0) sb.append(String.format("3등 %d회, ", r3));
+            if (r4 > 0) sb.append(String.format("4등 %d회, ", r4));
+            if (r5 > 0) sb.append(String.format("5등 %d회, ", r5));
+
+            // 마지막 쉼표 제거
+            if (sb.charAt(sb.length() - 2) == ',') {
+                sb.setLength(sb.length() - 2);
+                sb.append(". ");
+            }
+        }
+
+        sb.append(String.format("총 당첨금: %,d원, ", prize));
+
+        if (profit >= 0) {
+            sb.append(String.format("수익: +%,d원 (%.1f%%)", profit, returnRate));
+        } else {
+            sb.append(String.format("손실: %,d원 (%.1f%%)", profit, returnRate));
+        }
+
+        if (bestRank != null) {
+            sb.append(String.format(". 최고 등수: %d등", bestRank));
+        }
+
+        return sb.toString();
+    }
+
+    /**
      * 등수별 당첨금 조회 (CheckService 로직 복사)
      */
     private Long getPrizeAmount(LottoHistory draw, Integer rank) {
@@ -209,6 +478,21 @@ public class UserPredictionService {
             return prediction.getStartDrawId();
         }
         return 1;
+    }
+
+    /**
+     * 시작 회차부터 현재까지 총 회차 수 계산
+     */
+    private int getTotalDrawsSinceStart(Integer startDrawNo) {
+        LottoHistory latestDraw = lottoHistoryRepository
+                .findTopByDeleteYnAndUseYnOrderByDrawNoDesc("N", "Y")
+                .orElse(null);
+
+        if (latestDraw == null) {
+            return 0;
+        }
+
+        return latestDraw.getDrawNo() - startDrawNo + 1;
     }
 
     /**

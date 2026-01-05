@@ -71,6 +71,12 @@ public class UserPrediction {
     @Column(name = "START_DRAW_ID")
     private Integer startDrawId;  // 시작 회차
 
+    @OneToOne(mappedBy = "userPrediction")
+    private UserPredictionHistoricalStats userPredictionHistoricalStat;
+
+    @OneToOne(mappedBy = "userPrediction")
+    private UserPredictionTrackingStats userPredictionTrackingStat;
+
     // 번호 배열 문자열 자동 생성
     public void generatePredictedNumbersString() {
         this.predictedNumbers = String.format("%d,%d,%d,%d,%d,%d",
