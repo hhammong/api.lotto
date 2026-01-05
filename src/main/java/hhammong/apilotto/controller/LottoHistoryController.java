@@ -1,14 +1,19 @@
 package hhammong.apilotto.controller;
 
-import hhammong.apilotto.dto.ApiResponse;
-import hhammong.apilotto.dto.LottoHistoryResponse;
+import hhammong.apilotto.dto.*;
 import hhammong.apilotto.service.LottoHistoryService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/lotto")
@@ -51,5 +56,13 @@ public class LottoHistoryController {
         Page<LottoHistoryResponse> response = lottoHistoryService.getAllDraws(pageable);
 
         return ResponseEntity.ok(ApiResponse.success(response, "회차 목록 조회 성공"));
+    }
+
+    @PostMapping("/lotto-history")
+    @Operation(summary = "최신 로또 당첨 번호 등록", description = "매주 업데이트 되는 로또 당첨 번호.")
+    public LottoHistoryResponse createLottoHistory(
+            @Valid @RequestBody LottoHistoryCreateRequest request
+    ) {
+        return lottoHistoryService.createLottoHistory(request);
     }
 }

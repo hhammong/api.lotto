@@ -24,7 +24,7 @@ public class PredictionHistoryResponse {
 
     // 전체 통계
     private Integer totalDraws;        // 총 참여 회차
-    private Integer winningDraws;      // 당첨된 회차
+    private Integer winningDraws;      // 당첨된 회차 수
 
     // 등수별 통계
     private Integer rank1Count;
