@@ -26,6 +26,8 @@ public interface LottoHistoryRepository extends JpaRepository<LottoHistory, UUID
     // 회차 번호 존재 여부 확인
     boolean existsByDrawNo(Integer drawNo);
 
+    Optional<LottoHistory> findByDrawNo(Integer drawNo);
+
     /**
      * 특정 회차 이상의 모든 당첨번호 조회 (오름차순)
      */

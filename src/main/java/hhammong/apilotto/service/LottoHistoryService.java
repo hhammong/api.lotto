@@ -6,6 +6,7 @@ import hhammong.apilotto.entity.LottoHistory;
 import hhammong.apilotto.exception.ResourceNotFoundException;
 import hhammong.apilotto.repository.LottoHistoryRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -13,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class LottoHistoryService {
@@ -59,6 +61,15 @@ public class LottoHistoryService {
      */
     @Transactional
     public LottoHistoryResponse createLottoHistory(LottoHistoryCreateRequest request) {
+        // 이미 존재하는 회차인지 확인
+        if (lottoHistoryRepository.existsByDrawNo(request.getDrawNo())) {
+            log.info("{}회차는 이미 등록되어 있습니다. 스킵합니다.", request.getDrawNo());
+            // 기존 데이터 반환
+            LottoHistory existing = lottoHistoryRepository.findByDrawNo(request.getDrawNo())
+                    .orElseThrow(() -> new ResourceNotFoundException("LottoHistory not found"));
+            return LottoHistoryResponse.from(existing);
+        }
+
         LottoHistory entity = LottoHistory.builder()
                 .drawNo(request.getDrawNo())
                 .drawDate(request.getDrawDate())
