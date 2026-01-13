@@ -2,6 +2,7 @@ package hhammong.apilotto.scheduler;
 
 import hhammong.apilotto.dto.DhlotteryApiResponse;
 import hhammong.apilotto.dto.LottoHistoryCreateRequest;
+import hhammong.apilotto.repository.LottoHistoryRepository;
 import hhammong.apilotto.service.LottoHistoryService;
 import hhammong.apilotto.service.UserPredictionService;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,7 @@ public class LottoHistoryScheduler {
     private final LottoHistoryService lottoHistoryService;
     private final RestTemplate restTemplate;
     private final UserPredictionService userPredictionService;
+    private final LottoHistoryRepository lottoHistoryRepository;
 
     private static final String DHLOTTERY_API_URL = "https://www.dhlottery.co.kr/lt645/selectPstLt645Info.do";
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
@@ -45,10 +47,15 @@ public class LottoHistoryScheduler {
                     && !response.getData().getList().isEmpty()) {
 
                 // 첫 번째 데이터 가져오기
-                DhlotteryApiResponse.LottoInfo lottoInfo = response.getData().getList().get(0);
+                DhlotteryApiResponse.LottoInfo lottoInfo = response.getData().getList().getFirst();
 
                 // DTO 변환
                 LottoHistoryCreateRequest request = convertToRequest(lottoInfo);
+
+                if(lottoHistoryRepository.existsByDrawNo(request.getDrawNo())) {
+                    log.info("{}회차는 이미 등록되어 있습니다. 스킵합니다.", request.getDrawNo());
+                    return;
+                }
 
                 // DB 저장
                 lottoHistoryService.createLottoHistory(request);
