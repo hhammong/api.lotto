@@ -129,13 +129,41 @@ public class UserPredictionController {
     @GetMapping("/{predictionId}/history")
     public ResponseEntity<ApiResponse<PredictionHistoryResponse>> getPredictionHistory(
             @PathVariable UUID userId,
-            @PathVariable UUID predictionId) {
+            @PathVariable UUID predictionId,
+            @RequestParam(required = false) String startDrawSortation) {
 
         //PredictionHistoryResponse response = checkService.getPredictionHistory(userId, predictionId);
-        PredictionHistoryResponse response = checkService.getPredictionHistory2(userId, predictionId);
+        PredictionHistoryResponse response = checkService.getPredictionHistory2(userId, predictionId, startDrawSortation);
 
         return ResponseEntity.ok(
                 ApiResponse.success(response, "번호 이력 조회 완료"));
     }
 
+    /**
+     * 특정 번호 통계 조회
+     */
+    @GetMapping("/{predictionId}/history-stats")
+    public ResponseEntity<ApiResponse<PredictionHistoryResponse>> getUserPredictionHistoricalStats(
+            @PathVariable UUID userId,
+            @PathVariable UUID predictionId) {
+
+        PredictionHistoryResponse response = predictionService.getUserPredictionHistoricalStats(userId, predictionId);
+
+        return ResponseEntity.ok(
+                ApiResponse.success(response, "번호 과거 통계 조회 성공"));
+    }
+
+    /**
+     * 특정 번호 현재 통계 조회
+     */
+    @GetMapping("/{predictionId}/tracking-stats")
+    public ResponseEntity<ApiResponse<PredictionHistoryResponse>> getUserPredictionTrackingStats(
+            @PathVariable UUID userId,
+            @PathVariable UUID predictionId) {
+
+        PredictionHistoryResponse response = predictionService.getUserPredictionTrackingStats(userId, predictionId);
+
+        return ResponseEntity.ok(
+                ApiResponse.success(response, "번호 현재 통계 조회 성공"));
+    }
 }

@@ -3,6 +3,7 @@ package hhammong.apilotto.scheduler;
 import hhammong.apilotto.dto.DhlotteryApiResponse;
 import hhammong.apilotto.dto.LottoHistoryCreateRequest;
 import hhammong.apilotto.service.LottoHistoryService;
+import hhammong.apilotto.service.UserPredictionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -19,6 +20,7 @@ public class LottoHistoryScheduler {
 
     private final LottoHistoryService lottoHistoryService;
     private final RestTemplate restTemplate;
+    private final UserPredictionService userPredictionService;
 
     private static final String DHLOTTERY_API_URL = "https://www.dhlottery.co.kr/lt645/selectPstLt645Info.do";
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
@@ -50,8 +52,11 @@ public class LottoHistoryScheduler {
 
                 // DB 저장
                 lottoHistoryService.createLottoHistory(request);
-
                 log.info("로또 {}회차 당첨 번호 저장 완료", lottoInfo.getLtEpsd());
+
+                userPredictionService.matchNewDrawWithAllUserPredictions(lottoInfo.getLtEpsd());
+                log.info("로또 {}회차 사용자 번호 매칭 완료", lottoInfo.getLtEpsd());
+
             } else {
                 log.warn("외부 API 응답 데이터가 비어있습니다.");
             }

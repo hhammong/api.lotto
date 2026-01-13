@@ -1,5 +1,7 @@
 package hhammong.apilotto.dto;
 
+import hhammong.apilotto.entity.UserPredictionHistoricalStats;
+import hhammong.apilotto.entity.UserPredictionTrackingStats;
 import lombok.*;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -45,4 +47,38 @@ public class PredictionHistoryResponse {
 
     // 요약 메시지
     private String summaryMessage;
+
+    public static PredictionHistoryResponse from(UserPredictionHistoricalStats entity) {
+        return PredictionHistoryResponse.builder()
+                .predictionId(entity.getPredictionId())
+                .totalDraws(entity.getTotalDraws())
+                .winningDraws(entity.getWinningDraws())
+                .totalPrizeAmount(entity.getTotalPrizeAmount())
+                .bestRank(entity.getBestRank())
+                .returnRate(entity.getReturnRate())
+                .rank1Count(entity.getRank1Count())
+                .rank2Count(entity.getRank2Count())
+                .rank3Count(entity.getRank3Count())
+                .rank4Count(entity.getRank4Count())
+                .rank5Count(entity.getRank5Count())
+                .bestDrawNo(entity.getBestDrawNo())
+                .build();
+    }
+
+    public static PredictionHistoryResponse from(UserPredictionTrackingStats entity) {
+        return PredictionHistoryResponse.builder()
+                .predictionId(entity.getPredictionId())
+                .totalDraws(entity.getTotalDraws())
+                .winningDraws(entity.getWinningDraws())
+                .totalPrizeAmount(entity.getTotalPrizeAmount())
+                .bestRank(entity.getBestRank())
+                .returnRate(entity.getReturnRate())
+                .rank1Count(entity.getRank1Count())
+                .rank2Count(entity.getRank2Count())
+                .rank3Count(entity.getRank3Count())
+                .rank4Count(entity.getRank4Count())
+                .rank5Count(entity.getRank5Count())
+                .bestDrawNo(entity.getBestDrawNo())
+                .build();
+    }
 }

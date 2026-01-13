@@ -1,5 +1,6 @@
 package hhammong.apilotto.repository;
 
+import hhammong.apilotto.entity.LottoHistory;
 import hhammong.apilotto.entity.UserPredictionHistoricalStats;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -12,5 +13,6 @@ import java.util.UUID;
 @Repository
 public interface UserPredictionHistoricalStatsRepository extends JpaRepository<UserPredictionHistoricalStats, UUID> {
 
+    Optional<UserPredictionHistoricalStats> findByPredictionId(UUID predictionId);
 
 }

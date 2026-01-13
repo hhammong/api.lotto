@@ -10,6 +10,7 @@ import hhammong.apilotto.exception.ResourceNotFoundException;
 import hhammong.apilotto.repository.*;
 import hhammong.apilotto.util.LottoMatchUtils;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -17,11 +18,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -533,4 +536,105 @@ public class UserPredictionService {
     public long getMyPredictionCount(UUID userId) {
         return predictionRepository.countByUser_UserIdAndDeleteYn(userId, "N");
     }
+
+    /**
+     * USER_PREDICTION_HISTORICAL_STATS 통계 조회
+     */
+    public PredictionHistoryResponse getUserPredictionHistoricalStats(UUID userId, UUID predictionId) {
+        UserPredictionHistoricalStats prediction = userPredictionHistoricalStatsRepository
+                .findByPredictionId(predictionId)
+                .orElseThrow(() -> new ResourceNotFoundException("해당 번호를 찾을 수 없습니다"));
+
+        return PredictionHistoryResponse.from(prediction);
+    }
+
+    /**
+     * USER_PREDICTION_TRACKING_STATS 통계 조회
+     */
+    public PredictionHistoryResponse getUserPredictionTrackingStats(UUID userId, UUID predictionId) {
+        UserPredictionTrackingStats prediction = userPredictionTrackingStatsRepository
+                .findByPredictionId(predictionId)
+                .orElseThrow(() -> new ResourceNotFoundException("해당 번호를 찾을 수 없습니다"));
+
+        return PredictionHistoryResponse.from(prediction);
+    }
+
+
+    /**
+     * 새 당첨번호와 모든 사용자 번호 매칭
+     * 스케줄러에서 당첨번호 업데이트 후 호출됨
+     */
+    @Transactional
+    public void matchNewDrawWithAllUserPredictions(Integer drawNo) {
+        log.info("새 당첨번호({}회차)와 사용자 번호 매칭 시작", drawNo);
+
+        try {
+            // 1. 새로 저장된 당첨번호 조회
+            LottoHistory newDraw = lottoHistoryRepository
+                    .findByDrawNoAndDeleteYnAndUseYn(drawNo, "N", "Y")
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "당첨번호를 찾을 수 없습니다: " + drawNo));
+
+            // 2. 모든 활성 사용자 번호 조회 (시작 회차 필터링)
+            List<UserPrediction> activePredictions = predictionRepository
+                    .findByDeleteYnAndStartDrawIdLessThanEqual("N", drawNo);
+
+            if (activePredictions.isEmpty()) {
+                log.info("매칭할 사용자 번호가 없습니다.");
+                return;
+            }
+
+            log.info("매칭 대상 사용자 번호: {}개", activePredictions.size());
+
+            // 3. 각 사용자 번호와 매칭 계산
+            List<PredictionsHistory> historyList = new ArrayList<>();
+
+            for (UserPrediction prediction : activePredictions) {
+                // 내 번호 리스트
+                List<Integer> myNumbers = Arrays.asList(
+                        prediction.getPredictedNum1().intValue(),
+                        prediction.getPredictedNum2().intValue(),
+                        prediction.getPredictedNum3().intValue(),
+                        prediction.getPredictedNum4().intValue(),
+                        prediction.getPredictedNum5().intValue(),
+                        prediction.getPredictedNum6().intValue()
+                );
+
+                // 매칭 계산 (기존 메서드 재사용)
+                DrawMatchResult result = calculateDrawMatchForHistory(myNumbers, newDraw);
+
+                // 꽝이면 저장 안함
+                if (result.getRank() == null) {
+                    continue;
+                }
+
+                // PredictionsHistory 생성
+                PredictionsHistory history = PredictionsHistory.builder()
+                        .predictionId(prediction.getPredictionId())
+                        .historyId(newDraw.getHistoryId())
+                        .userId(prediction.getUser().getUserId())
+                        .rank(result.getRank())
+                        .hasBonus(result.getHasBonus())
+                        .matchedCount(result.getMatchCount().shortValue())
+                        .prizeAmount(result.getPrizeAmount().intValue())
+                        .startDrawSortation("current") // 구분값 (past: 등록시, current: 업데이트시)
+                        .build();
+
+                historyList.add(history);
+            }
+
+            // 4. 배치로 일괄 저장 (성능 최적화)
+            if (!historyList.isEmpty()) {
+                predictionsHistoryRepository.saveAll(historyList);
+                log.info("{}회차 매칭 결과 {}건 저장 완료", drawNo, historyList.size());
+            } else {
+                log.info("{}회차에 당첨된 사용자가 없습니다.", drawNo);
+            }
+
+        } catch (Exception e) {
+            log.error("사용자 번호 매칭 중 오류 발생: {}회차", drawNo, e);
+            throw e; // 트랜잭션 롤백
+        }
+    }
+
 }

@@ -47,4 +47,11 @@ public interface UserPredictionRepository extends JpaRepository<UserPrediction, 
                                    @Param("num4") Short num4,
                                    @Param("num5") Short num5,
                                    @Param("num6") Short num6);
+
+    /**
+     * 시작 회차가 특정 회차 이하인 활성 번호 조회
+     * (새 당첨번호 회차보다 시작 회차가 작거나 같아야 매칭 대상)
+     */
+    List<UserPrediction> findByDeleteYnAndStartDrawIdLessThanEqual(String deleteYn, Integer drawNo);
+
 }

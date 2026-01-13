@@ -196,7 +196,7 @@ public class UserPredictionCheckService {
     /**
      * PredictionHistory 테이블 특정 번호의 전체 이력 조회
      */
-    public PredictionHistoryResponse getPredictionHistory2(UUID userId, UUID predictionId) {
+    public PredictionHistoryResponse getPredictionHistory2(UUID userId, UUID predictionId, String startDrawSortation) {
         // 1. 내 번호 조회
         UserPrediction prediction = predictionRepository
                 .findByPredictionIdAndUser_UserIdAndDeleteYn(predictionId, userId, "N")
@@ -215,9 +215,31 @@ public class UserPredictionCheckService {
         // 3. 시작 회차 결정
         Integer startDrawNo = determineStartDrawNo(prediction);
 
+        /*시작 회차 이후 모든 회차 조회
+        List<LottoHistory> allDraws = lottoHistoryRepository
+                .findByDrawNoGreaterThanEqualAndDeleteYnAndUseYnOrderByDrawNoAsc(
+                        startDrawNo, "N", "Y");*/
         // ✨ 4. PREDICTIONS_HISTORY에서 당첨 이력만 조회!
-        List<PredictionsHistory> winningHistories = predictionsHistoryRepository
-                .findByPredictionIdOrderByDrawNoAsc(predictionId);
+        /*List<PredictionsHistory> winningHistories = predictionsHistoryRepository
+                .findByPredictionIdOrderByDrawNoAsc(predictionId);*/
+        List<PredictionsHistory> winningHistories;
+
+        if (startDrawSortation == null || startDrawSortation.isEmpty() || "past".equals(startDrawSortation)) {
+            // past (current가 아닌 것들)
+            winningHistories = predictionsHistoryRepository
+                    .findByPredictionIdAndStartDrawSortationNotOrderByDrawNoAsc(
+                            predictionId, "current");
+        } else if ("current".equals(startDrawSortation)) {
+            // current만 조회
+            winningHistories = predictionsHistoryRepository
+                    .findByPredictionIdAndStartDrawSortationOrderByDrawNoAsc(
+                            predictionId, "current");
+        } else {
+            // 잘못된 파라미터 값 - 기본값으로 past 처리
+            winningHistories = predictionsHistoryRepository
+                    .findByPredictionIdAndStartDrawSortationNotOrderByDrawNoAsc(
+                            predictionId, "current");
+        }
 
         // 5. DrawMatchResult로 변환 (LOTTO_HISTORY 조인 필요)
         List<DrawMatchResult> history = winningHistories.stream()

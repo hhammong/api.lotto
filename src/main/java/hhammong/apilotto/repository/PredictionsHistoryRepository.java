@@ -15,4 +15,10 @@ public interface PredictionsHistoryRepository extends JpaRepository<PredictionsH
 
     // 특정 사용자의 특정 예측 이력 조회
     List<PredictionsHistory> findByUserIdAndPredictionId(UUID userId, UUID predictionId);
+
+    List<PredictionsHistory> findByPredictionIdAndStartDrawSortationOrderByDrawNoAsc(
+            UUID predictionId, String startDrawSortation);
+
+    List<PredictionsHistory> findByPredictionIdAndStartDrawSortationNotOrderByDrawNoAsc(
+            UUID predictionId, String startDrawSortation);
 }
