@@ -23,7 +23,7 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
 
     // 회원가입
-    public User signup(String userUid, String password, String name, String nickname) {
+    public User signUp(String userUid, String password, String name, String nickname) {
         // ID 중복 체크
         if (checkUserUidDuplicate(userUid)) {
             throw new IllegalArgumentException("이미 존재하는 아이디입니다.");

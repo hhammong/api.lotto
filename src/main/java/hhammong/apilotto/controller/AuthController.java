@@ -1,7 +1,7 @@
 package hhammong.apilotto.controller;
 
 import hhammong.apilotto.dto.LoginRequest;
-import hhammong.apilotto.dto.SignupRequest;
+import hhammong.apilotto.dto.SignUpRequest;
 import hhammong.apilotto.entity.User;
 import hhammong.apilotto.service.AuthService;
 import lombok.RequiredArgsConstructor;
@@ -20,9 +20,9 @@ public class AuthController {
 
     // 회원가입
     @PostMapping("/signup")
-    public ResponseEntity<?> signup(@RequestBody SignupRequest request) {
+    public ResponseEntity<?> signup(@RequestBody SignUpRequest request) {
         try {
-            User user = authService.signup(
+            User user = authService.signUp(
                     request.getUserUid(),
                     request.getPassword(),
                     request.getName(),
