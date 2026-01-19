@@ -277,6 +277,7 @@ public class UserPredictionService {
                             .predictionId(prediction.getPredictionId())
                             .historyId(draw.getHistoryId())
                             .userId(userId)
+                            .drawNo(draw.getDrawNo())
                             .rank(result.getRank())
                             .hasBonus(result.getHasBonus())
                             .matchedCount(result.getMatchCount().shortValue())
@@ -588,6 +589,8 @@ public class UserPredictionService {
 
             // 3. 각 사용자 번호와 매칭 계산
             List<PredictionsHistory> historyList = new ArrayList<>();
+            List<UserPrediction> winningPredictions = new ArrayList<>(); // 당첨된 예측 저장
+            List<DrawMatchResult> winningResults = new ArrayList<>(); // 당첨 결과 저장
 
             for (UserPrediction prediction : activePredictions) {
                 // 내 번호 리스트
@@ -603,8 +606,10 @@ public class UserPredictionService {
                 // 매칭 계산 (기존 메서드 재사용)
                 DrawMatchResult result = calculateDrawMatchForHistory(myNumbers, newDraw);
 
-                // 꽝이면 저장 안함
+                // 꽝이면 PREDICTIONS_HISTORY 저장 안함 (하지만 통계는 업데이트 필요)
                 if (result.getRank() == null) {
+                    // 꽝인 경우에도 totalDraws는 증가해야 하므로 통계 업데이트
+                    updateStatsForNonWinningPrediction(prediction, newDraw);
                     continue;
                 }
 
@@ -613,6 +618,7 @@ public class UserPredictionService {
                         .predictionId(prediction.getPredictionId())
                         .historyId(newDraw.getHistoryId())
                         .userId(prediction.getUser().getUserId())
+                        .drawNo(newDraw.getDrawNo())
                         .rank(result.getRank())
                         .hasBonus(result.getHasBonus())
                         .matchedCount(result.getMatchCount().shortValue())
@@ -621,12 +627,17 @@ public class UserPredictionService {
                         .build();
 
                 historyList.add(history);
+                winningPredictions.add(prediction);
+                winningResults.add(result);
             }
 
-            // 4. 배치로 일괄 저장 (성능 최적화)
+            // 4. PREDICTIONS_HISTORY 배치 저장
             if (!historyList.isEmpty()) {
                 predictionsHistoryRepository.saveAll(historyList);
                 log.info("{}회차 매칭 결과 {}건 저장 완료", drawNo, historyList.size());
+                
+                // 5. 당첨된 예측의 통계 테이블 업데이트
+                updateStatsForWinningPredictions(winningPredictions, historyList, newDraw);
             } else {
                 log.info("{}회차에 당첨된 사용자가 없습니다.", drawNo);
             }
@@ -635,6 +646,207 @@ public class UserPredictionService {
             log.error("사용자 번호 매칭 중 오류 발생: {}회차", drawNo, e);
             throw e; // 트랜잭션 롤백
         }
+    }
+
+    /**
+     * 당첨된 예측들의 통계 테이블 업데이트
+     */
+    private void updateStatsForWinningPredictions(
+            List<UserPrediction> winningPredictions,
+            List<PredictionsHistory> historyList,
+            LottoHistory newDraw) {
+        
+        for (int i = 0; i < winningPredictions.size(); i++) {
+            UserPrediction prediction = winningPredictions.get(i);
+            PredictionsHistory history = historyList.get(i);
+            
+            // HISTORICAL_STATS 업데이트 (전체 회차 기준)
+            updateHistoricalStats(prediction, history, newDraw);
+            
+            // TRACKING_STATS 업데이트 (시작 회차 이후 기준)
+            updateTrackingStats(prediction, history, newDraw);
+        }
+    }
+
+    /**
+     * 꽝인 예측의 통계 업데이트 (totalDraws만 증가)
+     */
+    private void updateStatsForNonWinningPrediction(
+            UserPrediction prediction,
+            LottoHistory newDraw) {
+        
+        // HISTORICAL_STATS 업데이트
+        UserPredictionHistoricalStats historicalStats = userPredictionHistoricalStatsRepository
+                .findByPredictionId(prediction.getPredictionId())
+                .orElseGet(() -> {
+                    return UserPredictionHistoricalStats.builder()
+                            .userPrediction(prediction)
+                            .totalDraws(0)
+                            .winningDraws(0)
+                            .totalPrizeAmount(0L)
+                            .rank1Count(0)
+                            .rank2Count(0)
+                            .rank3Count(0)
+                            .rank4Count(0)
+                            .rank5Count(0)
+                            .build();
+                });
+        
+        historicalStats.setTotalDraws(newDraw.getDrawNo());
+        long totalInvestment = historicalStats.getTotalDraws() * 1000L;
+        historicalStats.setReturnRate(totalInvestment > 0 
+                ? (double) historicalStats.getTotalPrizeAmount() / totalInvestment * 100 
+                : 0.0);
+        userPredictionHistoricalStatsRepository.save(historicalStats);
+        
+        // TRACKING_STATS 업데이트
+        Integer startDrawNo = prediction.getStartDrawId() != null 
+                ? prediction.getStartDrawId() 
+                : 1;
+        
+        UserPredictionTrackingStats trackingStats = userPredictionTrackingStatsRepository
+                .findByPredictionId(prediction.getPredictionId())
+                .orElseGet(() -> {
+                    return UserPredictionTrackingStats.builder()
+                            .userPrediction(prediction)
+                            .totalDraws(0)
+                            .winningDraws(0)
+                            .totalPrizeAmount(0L)
+                            .rank1Count(0)
+                            .rank2Count(0)
+                            .rank3Count(0)
+                            .rank4Count(0)
+                            .rank5Count(0)
+                            .build();
+                });
+        
+        trackingStats.setTotalDraws(newDraw.getDrawNo() - startDrawNo + 1);
+        long trackingInvestment = trackingStats.getTotalDraws() * 1000L;
+        trackingStats.setReturnRate(trackingInvestment > 0 
+                ? (double) trackingStats.getTotalPrizeAmount() / trackingInvestment * 100 
+                : 0.0);
+        userPredictionTrackingStatsRepository.save(trackingStats);
+    }
+
+    /**
+     * USER_PREDICTION_HISTORICAL_STATS 업데이트
+     */
+    private void updateHistoricalStats(
+            UserPrediction prediction,
+            PredictionsHistory history,
+            LottoHistory newDraw) {
+        
+        UserPredictionHistoricalStats stats = userPredictionHistoricalStatsRepository
+                .findByPredictionId(prediction.getPredictionId())
+                .orElseGet(() -> {
+                    // 없으면 새로 생성 (초기값 설정)
+                    return UserPredictionHistoricalStats.builder()
+                            .userPrediction(prediction)
+                            .totalDraws(0)
+                            .winningDraws(0)
+                            .totalPrizeAmount(0L)
+                            .rank1Count(0)
+                            .rank2Count(0)
+                            .rank3Count(0)
+                            .rank4Count(0)
+                            .rank5Count(0)
+                            .build();
+                });
+        
+        // 통계 업데이트
+        stats.setTotalDraws(newDraw.getDrawNo()); // 전체 회차 수
+        stats.setWinningDraws((stats.getWinningDraws() != null ? stats.getWinningDraws() : 0) + 1);
+        stats.setTotalPrizeAmount((stats.getTotalPrizeAmount() != null ? stats.getTotalPrizeAmount() : 0L) 
+                + history.getPrizeAmount().longValue());
+        
+        // 등수별 카운트 증가
+        Integer rank = history.getRank();
+        if (rank != null) {
+            switch (rank) {
+                case 1 -> stats.setRank1Count((stats.getRank1Count() != null ? stats.getRank1Count() : 0) + 1);
+                case 2 -> stats.setRank2Count((stats.getRank2Count() != null ? stats.getRank2Count() : 0) + 1);
+                case 3 -> stats.setRank3Count((stats.getRank3Count() != null ? stats.getRank3Count() : 0) + 1);
+                case 4 -> stats.setRank4Count((stats.getRank4Count() != null ? stats.getRank4Count() : 0) + 1);
+                case 5 -> stats.setRank5Count((stats.getRank5Count() != null ? stats.getRank5Count() : 0) + 1);
+            }
+            
+            // 최고 등수 업데이트
+            if (stats.getBestRank() == null || rank < stats.getBestRank()) {
+                stats.setBestRank(rank);
+                stats.setBestDrawNo(newDraw.getDrawNo());
+            }
+        }
+        
+        // 수익률 재계산
+        long totalInvestment = stats.getTotalDraws() * 1000L;
+        stats.setReturnRate(totalInvestment > 0 
+                ? (double) stats.getTotalPrizeAmount() / totalInvestment * 100 
+                : 0.0);
+        
+        userPredictionHistoricalStatsRepository.save(stats);
+    }
+
+    /**
+     * USER_PREDICTION_TRACKING_STATS 업데이트
+     */
+    private void updateTrackingStats(
+            UserPrediction prediction,
+            PredictionsHistory history,
+            LottoHistory newDraw) {
+        
+        UserPredictionTrackingStats stats = userPredictionTrackingStatsRepository
+                .findByPredictionId(prediction.getPredictionId())
+                .orElseGet(() -> {
+                    // 없으면 새로 생성
+                    return UserPredictionTrackingStats.builder()
+                            .userPrediction(prediction)
+                            .totalDraws(0)
+                            .winningDraws(0)
+                            .totalPrizeAmount(0L)
+                            .rank1Count(0)
+                            .rank2Count(0)
+                            .rank3Count(0)
+                            .rank4Count(0)
+                            .rank5Count(0)
+                            .build();
+                });
+        
+        // 시작 회차 이후 회차 수 계산
+        Integer startDrawNo = prediction.getStartDrawId() != null 
+                ? prediction.getStartDrawId() 
+                : 1;
+        stats.setTotalDraws(newDraw.getDrawNo() - startDrawNo + 1);
+        
+        // 통계 업데이트
+        stats.setWinningDraws((stats.getWinningDraws() != null ? stats.getWinningDraws() : 0) + 1);
+        stats.setTotalPrizeAmount((stats.getTotalPrizeAmount() != null ? stats.getTotalPrizeAmount() : 0L) 
+                + history.getPrizeAmount().longValue());
+        
+        // 등수별 카운트 증가
+        Integer rank = history.getRank();
+        if (rank != null) {
+            switch (rank) {
+                case 1 -> stats.setRank1Count((stats.getRank1Count() != null ? stats.getRank1Count() : 0) + 1);
+                case 2 -> stats.setRank2Count((stats.getRank2Count() != null ? stats.getRank2Count() : 0) + 1);
+                case 3 -> stats.setRank3Count((stats.getRank3Count() != null ? stats.getRank3Count() : 0) + 1);
+                case 4 -> stats.setRank4Count((stats.getRank4Count() != null ? stats.getRank4Count() : 0) + 1);
+                case 5 -> stats.setRank5Count((stats.getRank5Count() != null ? stats.getRank5Count() : 0) + 1);
+            }
+            
+            // 최고 등수 업데이트
+            if (stats.getBestRank() == null || rank < stats.getBestRank()) {
+                stats.setBestRank(rank);
+                stats.setBestDrawNo(newDraw.getDrawNo());
+            }
+        }
+        
+        // 수익률 재계산
+        long totalInvestment = stats.getTotalDraws() * 1000L;
+        stats.setReturnRate(totalInvestment > 0 
+                ? (double) stats.getTotalPrizeAmount() / totalInvestment * 100 
+                : 0.0);
+        
+        userPredictionTrackingStatsRepository.save(stats);
     }
 
 }
